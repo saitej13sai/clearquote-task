@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+build/
+dist/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Streamlit
+.streamlit/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# SQLite
+*.sqlite3
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Coverage / test
+.coverage
+htmlcov/
+
+# Zip artifacts
+*.zip
