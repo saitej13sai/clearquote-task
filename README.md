@@ -1,150 +1,221 @@
-ClearQuote NL → SQL Analytics API
+# ClearQuote NL → SQL Analytics API
 
 Natural language analytics system for ClearQuote vehicle damage and repair data.
 
 This project converts user questions into safe, validated PostgreSQL queries using an LLM, executes them against a structured database, and returns formatted analytical answers.
 
-Built with:
+---
 
-FastAPI (API layer)
+## Overview
 
-PostgreSQL (Neon or local)
+ClearQuote NL → SQL enables users to query structured vehicle repair data using natural language.
 
-SQLAlchemy (DB access)
+The system:
 
-sqlglot (AST-level SQL validation)
+1. Converts user question → parameterized SQL (GPT-5.2)
+2. Validates SQL via AST inspection (SELECT-only enforcement)
+3. Executes safely against PostgreSQL (read-only)
+4. Returns formatted analytical response
 
-OpenAI GPT-5.2 (NL → SQL)
+The architecture is designed with strict safety, validation, and production-grade guardrails.
 
-Streamlit (Frontend UI)
+---
 
-Architecture Overview
+## Tech Stack
+
+* FastAPI (API layer)
+* PostgreSQL (Neon or local)
+* SQLAlchemy (DB access)
+* sqlglot (AST-based SQL validation)
+* OpenAI GPT-5.2 (NL → SQL)
+* Streamlit (Frontend UI)
+
+---
+
+## Architecture
+
+```
 User Question
-      ↓
+    ↓
 LLM (GPT-5.2)
-      ↓
+    ↓
 Structured JSON (SQL + params)
-      ↓
+    ↓
 SQL Validator (AST-based, SELECT-only)
-      ↓
-Postgres (read-only execution)
-      ↓
+    ↓
+PostgreSQL (read-only execution)
+    ↓
 Answer Formatter
-      ↓
+    ↓
 API Response (JSON)
-      ↓
+    ↓
 Streamlit UI
+```
 
-Key Design Decisions
-1. Strict Read-Only SQL Enforcement
+---
 
-Only SELECT queries allowed
+## Key Design Decisions
 
-AST validation using sqlglot
+### 1. Strict Read-Only SQL Enforcement
 
-Blocks: INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CREATE, MERGE
+* Only `SELECT` queries allowed
+* AST validation using `sqlglot`
+* Blocks:
+  * INSERT
+  * UPDATE
+  * DELETE
+  * DROP
+  * ALTER
+  * TRUNCATE
+  * CREATE
+  * MERGE
+* No raw string execution without validation
 
-No raw string execution without validation
+---
 
-2. Parameterized Queries
+### 2. Parameterized Queries
 
-The model is forced to generate parameterized SQL:
+The LLM is forced to generate parameterized SQL:
 
-WHERE r.created_at >= :start_date
-  AND r.created_at < :end_date
+```sql
+WHERE r.created_at >= :start_date 
+AND r.created_at < :end_date
+```
 
+Benefits:
 
-Prevents injection and ensures safe binding via SQLAlchemy.
+* Prevents SQL injection
+* Safe binding via SQLAlchemy
+* Deterministic execution
 
-3. Date Handling Hardening
+---
 
-Prompt explicitly enforces:
+### 3. Date Handling Hardening
 
-No :: casting
+Enforced at prompt level:
 
-No INTERVAL arithmetic in SQL
+* No `::` casting
+* No `INTERVAL` arithmetic in SQL
+* Date math computed in Python
+* Only parameter binding allowed
 
-Date math computed in Python (params)
+This ensures predictable execution and avoids dialect inconsistencies.
 
-Ensures predictable execution and avoids syntax issues.
+---
 
-4. Table/Column Allowlist
+### 4. Table Allowlist
 
-Only the following tables are usable:
+Only the following tables are accessible:
 
-vehicle_cards
+* `vehicle_cards`
+* `damage_detections`
+* `repairs`
+* `quotes`
 
-damage_detections
+The LLM receives explicit schema guidance.
 
-repairs
+---
 
-quotes
+## Features
 
-LLM receives explicit schema guidance.
+* Natural language → SQL conversion
+* Synonym normalization (panel & severity)
+* Time filters:
+  * "this month"
+  * "last 30 days"
+* Aggregations:
+  * COUNT
+  * AVG
+  * SUM
+  * STDDEV
+  * VARIANCE
+* Safe JOIN support
+* Automatic LIMIT enforcement
+* Graceful clarification flow
+* Streamlit frontend
 
-Features
+---
 
-Natural language to SQL
+## Example Queries
 
-Synonym normalization (panel & severity)
+### Average Repair Cost
 
-Time filters:
+> What is the average repair cost for rear bumper damages in last 30 days?
 
-"this month"
+---
 
-"last 30 days"
+### Severe Damage Count
 
-Aggregations (COUNT, AVG, SUM, STDDEV, VARIANCE)
+> How many vehicles had severe damages on the front panel this month?
 
-Safe JOIN support
+---
 
-Auto LIMIT enforcement
+### Variance Analytics
 
-Graceful clarification flow
+> Which car models have the highest repair cost variance?
 
-Streamlit frontend
+---
 
-Example Queries
-1. Average Repair Cost
+## Safety Handling
 
-What is the average repair cost for rear bumper damages in last 30 days?
+| Risk             | Mitigation            |
+| ---------------- | --------------------- |
+| SQL Injection    | Parameterized queries |
+| Write Operations | AST-level block       |
+| Schema Abuse     | Table allowlist       |
+| Overfetching     | Enforced LIMIT        |
+| Date Misuse      | No INTERVAL / casting |
 
-2. Severe Damage Count
+Example:
 
-How many vehicles had severe damages on the front panel this month?
+User input:
 
-3. Variance Analytics
+> Delete all rows from repairs
 
-Which car models have the highest repair cost variance?
+Response:
+Clarification returned (write operations blocked)
 
-4. Safety Handling
+---
 
-Delete all rows from repairs
-→ Returns clarification (write operations blocked)
+## Setup Instructions
 
-Setup Instructions
-1. Clone Repository
+### 1. Clone Repository
+
+```bash
 git clone https://github.com/saitej13sai/clearquote-task.git
 cd clearquote-task
+```
 
-2. Create Virtual Environment
+---
+
+### 2. Create Virtual Environment
+
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+```
 
-3. Configure Environment
+---
 
-Create .env:
+### 3. Configure Environment
 
+Create `.env` file:
+
+```
 DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
 OPENAI_API_KEY=your_key_here
 OPENAI_MODEL=gpt-5.2
 MAX_ROWS=200
+```
 
+Neon Postgres is recommended for cloud environments.
 
-Neon Postgres recommended for Codespaces.
+---
 
-4. Apply Schema
+### 4. Apply Schema
+
+```bash
 python - <<'PY'
 from sqlalchemy import create_engine, text
 import os
@@ -160,47 +231,80 @@ with engine.begin() as conn:
 
 print("Schema applied")
 PY
+```
 
-5. Load Dataset
+---
+
+### 5. Load Dataset
 
 Download the dataset and save as:
 
+```
 ClearQuote Sample Dataset.xlsx
-
+```
 
 Then run:
 
+```bash
 python scripts/load_data.py
+```
 
-6. Start API
+---
+
+### 6. Start API
+
+```bash
 uvicorn app.main:app --reload
-
+```
 
 Health check:
 
+```bash
 curl http://127.0.0.1:8000/
+```
 
-7. Test API
+---
+
+### 7. Test API
+
+```bash
 python - <<'PY'
 import requests
+
 r = requests.post(
     "http://127.0.0.1:8000/query",
     json={"question": "How many vehicle cards are there?"}
 )
+
 print(r.json())
 PY
+```
 
-8. Run Streamlit UI
+---
+
+### 8. Run Streamlit UI
+
+```bash
 streamlit run ui/streamlit_app.py
+```
 
-API Contract
-POST /query
-Request
+---
+
+## API Contract
+
+### POST /query
+
+#### Request
+
+```json
 {
   "question": "How many vehicle cards are there?"
 }
+```
 
-Response
+#### Response
+
+```json
 {
   "needs_clarification": false,
   "sql": "SELECT COUNT(*) FROM vehicle_cards LIMIT 200",
@@ -208,41 +312,29 @@ Response
   "rows_returned": 1,
   "notes": []
 }
+```
 
-Security Model
-Risk	Mitigation
-SQL Injection	Parameterized queries
-Write operations	AST-level block
-Schema abuse	Allowlist tables only
-Overfetching	Enforced LIMIT
-Date misuse	No INTERVAL / casting
-Testing
+---
+
+## Testing
 
 Includes:
 
-SQL validator unit tests
+* SQL validator unit tests
+* End-to-end smoke test
+* Manual adversarial tests (DELETE / DROP / UPDATE)
 
-End-to-end smoke test
+Run:
 
-Manual adversarial tests (DELETE / DROP / UPDATE)
+```bash
+pytest
+```
 
-Production Improvements (Future Work)
+---
 
-Structured JSON schema enforcement (strict mode)
+## Project Structure
 
-Query plan inspection
-
-Cost-based query guard
-
-Response caching
-
-Query logging & analytics
-
-Role-based row filtering
-
-Deployment to Railway / Render
-
-Project Structure
+```
 app/
   main.py
   llm_sql.py
@@ -264,23 +356,41 @@ ui/
 tests/
   test_sql_validate.py
   test_end_to_end_smoke.py
+```
 
-Evaluation Readiness
+---
 
-The implementation satisfies:
+## Production Improvements (Future Work)
 
-Natural language understanding
+* Strict structured JSON schema enforcement
+* Query plan inspection
+* Cost-based query guard
+* Response caching
+* Query logging & analytics
+* Role-based row filtering
+* Deployment to Railway / Render
 
-Robust SQL generation
+---
 
-Strict safety validation
+## Evaluation Readiness
 
-Real analytical reasoning
+This implementation satisfies:
 
-Clean architecture
+* Natural language understanding
+* Robust SQL generation
+* Strict safety validation
+* Analytical reasoning
+* Clean architecture
+* Proper error handling
+* Frontend interface
+* Clear documentation
 
-Proper error handling
+---
 
-Frontend interface
+## License
 
-Clear documentation
+MIT
+
+## Author
+
+Sai Teja
